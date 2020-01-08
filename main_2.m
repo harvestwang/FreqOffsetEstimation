@@ -15,119 +15,172 @@ sps = clkFreq/modRate;
 
 % channel parameters
 phaseOffset = 0;
-freqOffset = -20e3;
-EbNo = (-5:5)';
+freqOffset = 1e3;
+EbNo = (-15:15)';
 
 alpha = 1;
-repeatTimes = 2000;
+repeatTimes = 5000;
 
-firFreqOffsetEst = zeros(length(EbNo), 1);
-secFreqOffsetEst = zeros(length(EbNo), 1);
+GmskMod = comm.GMSKModulator('BitInput', true, 'SamplesPerSymbol', sps, ...
+    'PulseLength', 1);
 
-firFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
-secFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
+% Hybrid Algorithm
+HybridFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
+HybridFreqOffsetEst = zeros(length(EbNo), 1);
 
+% New Algorithm
+newFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
 newFreqOffsetEst = zeros(length(EbNo), 1);
 
-gmskMod = comm.GMSKModulator('BitInput', true, 'SamplesPerSymbol', sps, ...
-                                'PulseLength', 1);
+% DFT Algorithm
+dftFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
+dftFreqOffsetEst = zeros(length(EbNo), 1);
+
+% Kay Algorithm
+KayFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
+KayFreqOffsetEst = zeros(length(EbNo), 1);
+
+% Fitz Algorithm
+FitzFreqOffsetEstTemp = zeros(length(EbNo), repeatTimes);
+FitzFreqOffsetEst = zeros(length(EbNo), 1);
 
 %% Simulation
 for i = 1:length(EbNo)
-
-    fprintf("\nEbNo = %2d ...", EbNo(i));
+    
+    fprintf('EbNo = %2ddB...\n', EbNo(i));
+    channel = comm.AWGNChannel('EbNo', EbNo(i), 'BitsPerSymbol', 1);
     
     for time = 1 : repeatTimes
-    %% Initialization
+        %% Initialization
         [syncPreSrc, dataSrc, syncPostSrc, syncPreCode, ...
             dataCode, syncPostCode] = sourceGen(syncLen, dataLen);
-
-    %% Transmitter
-        frame = [syncPreCode; dataCode; syncPostCode];
-        sigGMSKMod = gmskMod(frame);
-%         txSigGMSK = downsample(sigGMSKMod, sps, sps/2);
-%         scatterplot(sigGMSKMod);
-    %% Channel
-        channel = comm.AWGNChannel('EbNo', EbNo(i), 'BitsPerSymbol', 1);
-        addNoiseSig = channel(sigGMSKMod); % add noise
-        addPhaseOffsetSig = addNoiseSig .* exp(1j*phaseOffset); % add phase offset
-        rxSigGMSK = addPhaseOffsetSig .* ...
+        
+        %% Transmitter
+        spFrame = [syncPreCode; syncPostCode; dataCode]; % single pilot L=48
+        dpFrame = [syncPreCode; dataCode; syncPostCode]; % double pilot Lpre=Lpost=24
+        
+        spGmskModSig = GmskMod(spFrame);
+        dpGmskModSig = GmskMod(dpFrame);
+        
+        %% Channel
+        spAddNoiseSig = channel(spGmskModSig); % add noise
+        spAddPhaseOffsetSig = spAddNoiseSig .* exp(1j*phaseOffset); % add phase offset
+        spRxGmskSig = spAddPhaseOffsetSig .* ...
             exp(1j*2*pi*freqOffset*(0:sps*frameLen-1)'/clkFreq);
-    
-    %% Receiver
-%         decRxGMSK = downsample(rxSigGMSK, sps, sps/2);
-        decRxGMSK = downsample(rxSigGMSK, sps);
-%         scatterplot(decRxGMSK);
-%         decLocalGMSK = sigGMSKMod;
         
-        rxSignal = decRxGMSK .* conj(sigGMSKMod);
+        dpAddNoiseSig = channel(dpGmskModSig); % add noise
+        dpAddPhaseOffsetSig = dpAddNoiseSig .* exp(1j*phaseOffset); % add phase offset
+        dpRxGmskSig = dpAddPhaseOffsetSig .* ...
+            exp(1j*2*pi*freqOffset*(0:sps*frameLen-1)'/clkFreq);
         
-        % Fisrt frequency offset estimation
-        [fft_amp, fft_index] = max(abs(fft(rxSignal, 1024)));
-        if fft_index < 512
-            firFreqOffsetEstTemp(i, time) = fft_index/1024 * modRate;
-        else
-            firFreqOffsetEstTemp(i, time) = (fft_index-1024)/1024*modRate;
-        end
-    
-    % Fisrt frequency offset correction
-    decRxSigCorrect1 = rxSignal .* ...
-        exp(-1j*2*pi*(0:frameLen-1)'*firFreqOffsetEstTemp(i, time)/clkFreq);
-%         scatterplot(decRxSigCorrect1);
-    
-    % Second frequency offset estimation
+        %% Receiver
+        % Single pilot frame
+        spRxGmskSig = downsample(spRxGmskSig, sps);
+        spDephaseRx = spRxGmskSig .* conj(spGmskModSig);
+        
+        spLen = 2*syncLen;
+        spDephasePilot = spDephaseRx(1:spLen);
+        
+        % Double pilot frame 
+        dpRxGmskSig = downsample(dpRxGmskSig, sps);
+        dpDephaseRx = dpRxGmskSig .* conj(dpGmskModSig);
+        
+        dpDephasePre = dpDephaseRx(1:syncLen);
+        dpDephasePost = decRxGMSK(syncLen+dataLen+1:frameLen);
 
-    crossCorrSeq1 = decRxSigCorrect1(1 : syncLen);
-    crossCorrSeq2 = decRxSigCorrect1(syncLen+dataLen+1 : frameLen);
+        %% DFT Algorithm
+        dftFreqOffsetEstTemp(i, time) = dftFreqEstimate(spDephasePilot, modRate, 1024);
+        
+        %% Kay Algorithm
+        KayFreqOffsetEstTemp(i, time) = KayFreqEstimate(spDephasePilot, modRate);
+        
+        %% Fitz Algorithm
+        FitzFreqOffsetEstTemp(i, time) = FitzFreqEstimate(spDephasePilot, modRate);
+        
+        %% Hybrid Algorithm
+        HybridFreqOffsetEstTemp(i, time) = HybridFreqEstimate(spDephasePilot, modRate);
 
-    crossCorrRes = sum(crossCorrSeq2 .* conj(crossCorrSeq1));
-    secFreqOffsetEstTemp(i, time) = angle(crossCorrRes)/(2*pi)*modRate/(syncLen + dataLen);
-    
-    % second frequency offset correction
-    decRxSigCorrect2 = decRxSigCorrect1 .* ... 
-        exp(-1j*2*pi*(0:frameLen-1)'*secFreqOffsetEstTemp(i, time)/clkFreq);
-%         scatterplot(decRxSigCorrect2);
     end
-    firFreqOffsetEst(i) = mean(firFreqOffsetEstTemp(i,:));
-    secFreqOffsetEst(i) = mean(secFreqOffsetEstTemp(i,:));
+    
+    dftFreqOffsetEst(i) = mean(dftFreqOffsetEstTemp(i, :));
+    KayFreqOffsetEst(i) = mean(KayFreqOffsetEstTemp(i, :));
+    FitzFreqOffsetEst(i) = mean(FitzFreqOffsetEstTemp(i, :));
+    HybridFreqOffsetEst(i) = mean(HybridFreqOffsetEstTemp(i, :));
+    
 end
 
-newFreqOffsetEst = firFreqOffsetEst + secFreqOffsetEst;
-%     norFreqOffset = mean((estFreqOffsetTemp - freqOffset).^2);
-%     newFreqOffsetEst(i) = sqrt(norFreqOffset)/freqOffset;
+%% Performance Compare
 
-%% Plot results
-fprintf("\n");
+% NRMSE
+
+dftNorRMSE = zeros(length(EbNo), 1);
+KayNorRMSE = zeros(length(EbNo), 1);
+FitzNorRMSE = zeros(length(EbNo), 1);
+HybridNorRMSE = zeros(length(EbNo), 1);
+
+for i = 1:length(EbNo)
+    dftNorRMSE(i) = sqrt(mean((dftFreqOffsetEstTemp(i,:)-freqOffset).^2))/freqOffset;
+    KayNorRMSE(i) = sqrt(mean((KayFreqOffsetEstTemp(i,:)-freqOffset).^2))/freqOffset;
+    FitzNorRMSE(i) = sqrt(mean((FitzFreqOffsetEstTemp(i,:)-freqOffset).^2))/freqOffset;
+    HybridNorRMSE(i) = sqrt(mean((HybridFreqOffsetEstTemp(i,:)-freqOffset).^2))/freqOffset;
+end
+
+% NVAR
+dftNorFreqVar = zeros(length(EbNo), 1);
+KayNorFreqVar = zeros(length(EbNo), 1);
+FitzNorFreqVar = zeros(length(EbNo), 1);
+HybridNorFreqVar = zeros(length(EbNo), 1);
+for i = 1:length(EbNo)
+    
+    dftNorFreq = (dftFreqOffsetEstTemp(i,:)-freqOffset)/modRate;
+    KayNorFreq = (KayFreqOffsetEstTemp(i,:)-freqOffset)/modRate;
+    FitzNorFreq = (FitzFreqOffsetEstTemp(i,:)-freqOffset)/modRate;
+    HybridNorFreq = (HybridFreqOffsetEstTemp(i,:)-freqOffset)/modRate;
+    
+    dftNorFreqVar(i) = sum(dftNorFreq .^ 2)/repeatTimes;
+    KayNorFreqVar(i) = sum(KayNorFreq .^ 2)/repeatTimes;
+    FitzNorFreqVar(i) = sum(FitzNorFreq .^ 2)/repeatTimes;
+    HybridNorFreqVar(i) = sum(HybridNorFreq .^ 2)/repeatTimes;
+end
+
+SNR = 10.^(EbNo/10);
+CRB = 6/(2*pi)^2/spLen^3./SNR;
+
+% save(['newNorRMSE_', num2str(freqOffset/1000), 'kHz.mat'], 'newNorRMSE');
+% save(['newNorFreqVar_', num2str(freqOffset/1000), 'kHz.mat'], 'newNorFreqVar');
+% 
+% save(['dftNorRMSE_', num2str(freqOffset/1000), 'kHz.mat'], 'dftNorRMSE');
+% save(['dftNorFreqVar_', num2str(freqOffset/1000), 'kHz.mat'], 'dftNorFreqVar');
+% 
+% save(['KayNorRMSE_', num2str(freqOffset/1000), 'kHz.mat'], 'KayNorRMSE');
+% save(['KayNorFreqVar_', num2str(freqOffset/1000), 'kHz.mat'], 'KayNorFreqVar');
+% 
+% save(['FitzNorRMSE_', num2str(freqOffset/1000), 'kHz.mat'], 'FitzNorRMSE');
+% save(['FitzNorFreqVar_', num2str(freqOffset/1000), 'kHz.mat'], 'FitzNorFreqVar');
+
+% figure;
+% plot(EbNo, newFreqOffsetEst, '-o'); hold on
+% plot(EbNo, dftFreqOffsetEst, '-x'); hold on
+% plot(EbNo, KayFreqOffsetEst, '-s'); hold on
+% plot(EbNo, FitzFreqOffsetEst, '-*');
+% legend('New', 'DFT', 'Kay', 'Fitz');
+% title(['Frequency Offset Esitamation(offset = ', num2str(freqOffset/1000), 'kHz)']);
+% savefig(['Frequency(offset = ', num2str(freqOffset/1000), 'kHz).fig']);
 
 figure;
-plot(EbNo, newFreqOffsetEst, '-x');
-% hold on
-% plot(EbNo, firFreqOffsetEst, '-s');
-% hold on
-% plot(EbNo, secFreqOffsetEst, '-*');
+plot(EbNo, HybridNorRMSE, '-o'); hold on
+% plot(EbNo, dftNorRMSE, '-x'); hold on
+plot(EbNo, KayNorRMSE, '-s'); hold on
+plot(EbNo, FitzNorRMSE, '-<');
+legend('New', 'Kay', 'Fitz');
+title(['NRMSE(offset = ', num2str(freqOffset/1000), 'kHz)']);
+% savefig(['NRMSE(offset = ', num2str(freqOffset/1000), 'kHz).fig']);
 
-% plot(EbNo, estEbNoGMSK_dB, '-s'); hold on
-% plot(EbNo, estEbNoTTNT_dB, '-*'); hold on
-% plot(EbNo, estEbNoPaper_dB, '-o'); hold on
-% plot(EbNo, estEbNoUnbias_dB, '-^'); hold on
-% plot(EbNo, preEstEbNoUnbias_dB, '-<');
-% plot(EbNo, estEbNoSelfCorr_dB, '->');
-% legend('Ideal', 'GMSK Estimation', 'TTNT Estimation', 'Paper Estimation', ...
-%         'Unbias Estimation', 'Pre Unbias Estimation');
-% title("SNR estimation");
-% 
-% estDeltaGMSK = abs(estEbNoGMSK_dB - EbNo);
-% estDeltaTTNT = abs(estEbNoTTNT_dB - EbNo);
-% estDeltaPaper = abs(estEbNoPaper_dB - EbNo);
-% estDeltaUnbias = abs(estEbNoUnbias_dB - EbNo);
-% preEstDeltaUnbias = abs(preEstEbNoUnbias_dB - EbNo);
-% 
-% figure;
-% plot(EbNo, estDeltaGMSK, '-s'); hold on
-% plot(EbNo, estDeltaTTNT, '-*'); hold on
-% plot(EbNo, estDeltaPaper, '-o'); hold on
-% plot(EbNo, estDeltaUnbias, '-^'); hold on
-% plot(EbNo, preEstDeltaUnbias, '-<');
-% legend('GMSK Error', 'TTNT Error', 'Paper Error', 'Unbiased Error', ...
-%         'Pre Unbiased Error');
-% title("Estimated SNR Error");
+figure;
+semilogy(EbNo, HybridNorFreqVar, '-o'); hold on
+semilogy(EbNo, KayNorFreqVar, '-s'); hold on
+semilogy(EbNo, FitzNorFreqVar, '-<'); hold on
+semilogy(EbNo, CRB, '-*');
+legend('New', 'Kay', 'Fitz', 'CRB');
+title(['Var of Normalization Frequency(offset = ', num2str(freqOffset/1000), 'kHz)']);
+% savefig(['NVAR(offset = ', num2str(freqOffset/1000), 'kHz).fig']);

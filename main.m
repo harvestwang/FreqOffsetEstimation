@@ -15,8 +15,8 @@ sps = clkFreq/modRate;
 
 % channel parameters
 phaseOffset = 0;
-freqOffset = 1e3;
-EbNo = (-15:15)';
+freqOffset = 30e3;
+EbNo = (-5:5)';
 
 alpha = 1;
 repeatTimes = 3000;
@@ -119,26 +119,3 @@ figure;
 plot(EbNo, newFreqOffsetEst, '-x'); hold on
 plot(EbNo, firFreqOffsetEst, '-s'); hold on
 plot(EbNo, secFreqOffsetEst, '-*'); hold on
-% plot(EbNo, estEbNoPaper_dB, '-o'); hold on
-% plot(EbNo, estEbNoUnbias_dB, '-^'); hold on
-% plot(EbNo, preEstEbNoUnbias_dB, '-<');
-% plot(EbNo, estEbNoSelfCorr_dB, '->');
-% legend('Ideal', 'GMSK Estimation', 'TTNT Estimation', 'Paper Estimation', ...
-%         'Unbias Estimation', 'Pre Unbias Estimation');
-% title("SNR estimation");
-% 
-% estDeltaGMSK = abs(estEbNoGMSK_dB - EbNo);
-% estDeltaTTNT = abs(estEbNoTTNT_dB - EbNo);
-% estDeltaPaper = abs(estEbNoPaper_dB - EbNo);
-% estDeltaUnbias = abs(estEbNoUnbias_dB - EbNo);
-% preEstDeltaUnbias = abs(preEstEbNoUnbias_dB - EbNo);
-% 
-% figure;
-% plot(EbNo, estDeltaGMSK, '-s'); hold on
-% plot(EbNo, estDeltaTTNT, '-*'); hold on
-% plot(EbNo, estDeltaPaper, '-o'); hold on
-% plot(EbNo, estDeltaUnbias, '-^'); hold on
-% plot(EbNo, preEstDeltaUnbias, '-<');
-% legend('GMSK Error', 'TTNT Error', 'Paper Error', 'Unbiased Error', ...
-%         'Pre Unbiased Error');
-% title("Estimated SNR Error");
