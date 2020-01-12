@@ -16,8 +16,8 @@ sps = clkFreq/modRate;
 
 % channel parameters
 phaseOffset = 0;
-freqOffset = 800e3;
-EbNo = (-20:10)';
+freqOffset = 100e3;
+EbNo = (-15:15)';
 
 alpha = 1;
 repeatTimes = 2000;
@@ -198,4 +198,4 @@ semilogy(EbNo, HybridNorFreqVar, '-o'); hold on
 semilogy(EbNo, CRB, '-*'); hold on
 legend('Kay', 'M&M', 'Fitz', 'Hybrid', 'CRB');
 title(['Var of Normalization Frequency(offset = ', num2str(freqOffset/1000), 'kHz)']);
-% savefig(['NVAR(offset = ', num2str(freqOffset/1000), 'kHz).fig']);
+savefig(['..\', 'NVAR(offset = ', num2str(freqOffset/1000), 'kHz).fig']);

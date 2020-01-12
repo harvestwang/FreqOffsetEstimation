@@ -16,12 +16,22 @@ function freqOffsetEst = HybridFreqEstimate(pilot, modRate)
 %     secFreqOffsetEst = FitzFreqEstimate(correctedPilot, modRate);
     N = pilotLen/2;
     
+    
+    % Fitz Algorithm
     phaseDelta = zeros(N, 1);
     for i = 1:N
         phaseDelta(i) = angle(sum(correctedPilot(i+1:pilotLen) .* ...
             conj(correctedPilot(1:pilotLen-i))));
     end
     secFreqOffsetEst = sum(phaseDelta)*modRate/(pi*N*(N+1));
+
+    % L&R Algorithm
+%     corrRes = zeros(N, 1);
+%     for i = 1:N
+%         corrRes(i) = sum(correctedPilot(i+1:pilotLen).*conj(correctedPilot(1:pilotLen-i)))...
+%             /(pilotLen-i);
+%     end
+%     secFreqOffsetEst = angle(sum(corrRes))*modRate/(pi*(N+1));
     
     freqOffsetEst = firFreqOffsetEst + secFreqOffsetEst;
 end
