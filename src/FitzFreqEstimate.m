@@ -1,7 +1,7 @@
 function freqOffsetEst = FitzFreqEstimate(pilot, modRate)
 
     pilotLen = length(pilot);
-    N = pilotLen/2;
+    N = floor(pilotLen/2);
     
     phaseDelta = zeros(N, 1);
     for i = 1:N

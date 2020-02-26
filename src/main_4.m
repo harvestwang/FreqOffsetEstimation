@@ -5,7 +5,7 @@ close all;
 
 % frame parameters
 dataLen = 256;
-syncLen = (10:1:40)';
+syncLen = (10:2:40)';
 spLen = 2*syncLen;
 
 % physical layer parameters
@@ -19,7 +19,7 @@ phaseOffset = 0;
 norFreq = 0.005;
 freqOffset = modRate * norFreq;
 
-EbNo = 10;
+EbNo = -2;
 repeatTimes = 10000;
 
 % GmskMod = comm.GMSKModulator('BitInput', true, 'SamplesPerSymbol', sps, ...
@@ -95,13 +95,13 @@ for i = 1:length(spLen)
 %         localSyncPost = sigGMSKMod(syncLen+dataLen+1:frameLen);
 %         dephasePre = rxSyncPre .* conj(localSyncPre);
 %         dephasePost = rxSyncPost .* conj(localSyncPost);
-%         %% DFT Algorithm
-%         dftNorFreqOffsetEstTemp(i, time) = dftFreqEstimate(dephasePilot, modRate, 1024) ... 
-%             / modRate;
-        
-        %% Kay Algorithm
-        KayNorFreqOffsetEstTemp(i, time) = KayFreqEstimate(dephasePilot, modRate) ...
+        %% DFT Algorithm
+        dftNorFreqOffsetEstTemp(i, time) = dftFreqEstimate(dephasePilot, modRate, 1024) ... 
             / modRate;
+        
+%         %% Kay Algorithm
+%         KayNorFreqOffsetEstTemp(i, time) = KayFreqEstimate(dephasePilot, modRate) ...
+%             / modRate;
         
         %% Fitz Algorithm
         FitzNorFreqOffsetEstTemp(i, time) = FitzFreqEstimate(dephasePilot, modRate) ...
@@ -116,8 +116,8 @@ for i = 1:length(spLen)
             / modRate;
     end
     
-%     dftNorFreqOffsetEst(i) = mean(dftNorFreqOffsetEstTemp(i, :));
-    KayNorFreqOffsetEst(i) = mean(KayNorFreqOffsetEstTemp(i, :));
+    dftNorFreqOffsetEst(i) = mean(dftNorFreqOffsetEstTemp(i, :));
+%     KayNorFreqOffsetEst(i) = mean(KayNorFreqOffsetEstTemp(i, :));
     MaMNorFreqOffsetEst(i) = mean(MaMNorFreqOffsetEstTemp(i, :));
     FitzNorFreqOffsetEst(i) = mean(FitzNorFreqOffsetEstTemp(i, :));
     HybridNorFreqOffsetEst(i) = mean(HybridNorFreqOffsetEstTemp(i, :));
@@ -127,7 +127,7 @@ end
 %% Performance Compare
 
 dftNorFreqVar = zeros(length(syncLen), 1);
-KayNorFreqVar = zeros(length(syncLen), 1);
+% KayNorFreqVar = zeros(length(syncLen), 1);
 MaMNorFreqVar = zeros(length(syncLen), 1);
 FitzNorFreqVar = zeros(length(syncLen), 1);
 HybridNorFreqVar = zeros(length(syncLen), 1);
@@ -135,13 +135,13 @@ HybridNorFreqVar = zeros(length(syncLen), 1);
 for i = 1:length(syncLen)
     
     dftNorFreqErr = dftNorFreqOffsetEstTemp(i, :) - norFreq;
-    KayNorFreqErr = KayNorFreqOffsetEstTemp(i, :) - norFreq;
+%     KayNorFreqErr = KayNorFreqOffsetEstTemp(i, :) - norFreq;
     MaMNorFreqErr = MaMNorFreqOffsetEstTemp(i, :) - norFreq;
     FitzNorFreqErr = FitzNorFreqOffsetEstTemp(i, :) - norFreq;
     HybridNorFreqErr = HybridNorFreqOffsetEstTemp(i, :) - norFreq;
     
     dftNorFreqVar(i) = sum(dftNorFreqErr .^ 2)/repeatTimes;
-    KayNorFreqVar(i) = sum(KayNorFreqErr .^ 2)/repeatTimes;
+%     KayNorFreqVar(i) = sum(KayNorFreqErr .^ 2)/repeatTimes;
     MaMNorFreqVar(i) = sum(MaMNorFreqErr .^ 2)/repeatTimes;
     FitzNorFreqVar(i) = sum(FitzNorFreqErr .^ 2)/repeatTimes;
     HybridNorFreqVar(i) = sum(HybridNorFreqErr .^ 2)/repeatTimes;
@@ -159,11 +159,13 @@ decEbNo = 10^(EbNo/10);
 CRB = 6/(2*pi)^2./spLen./(spLen.^2-1)/decEbNo;
 
 figure;
-semilogy(spLen, KayNorFreqVar, '-s'); hold on
+semilogy(spLen, dftNorFreqVar, '-s'); hold on
 semilogy(spLen, MaMNorFreqVar, '-x'); hold on
 semilogy(spLen, FitzNorFreqVar, '-<'); hold on
 semilogy(spLen, HybridNorFreqVar, '-o'); hold on
 semilogy(spLen, CRB, '-*'); hold on
-legend('Kay', 'M&M', 'Fitz', 'Hybrid', 'CRB');
-title('VAR of Normalization Frequency Offset');
+legend('FFT(N_{fft}=1024)', 'M&M', 'Fitz', 'proposed', 'CRB');
+xlabel('Pilot Length');
+ylabel('var(f_dT_s)')
+% title('VAR of Normalization Frequency Offset');
 % savefig(['Frequency Offset Scale(EbNo=', num2str(EbNo), 'dB).fig']);
